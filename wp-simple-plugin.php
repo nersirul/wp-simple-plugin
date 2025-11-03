@@ -53,7 +53,7 @@ function wpsp_registrar_ajustes() {
     add_settings_section(
         'wpsp_seccion_principal',          // ID de la sección
         'Ajustes Principales',             // Título de la sección
-        'wpsp_seccion_principal_html',     // Función que muestra la descripción de la sección
+        'wpsp_seccion_principal_callback',     // Función que muestra la descripción de la sección
         'wpsp-plugin-opciones'             // Página donde se mostrará la sección
     );
 
