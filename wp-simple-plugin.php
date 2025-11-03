@@ -38,14 +38,25 @@ function wpsp_crear_menu_admin() {
 add_action( 'admin_init', 'wpsp_registrar_ajustes' );
 
 function wpsp_registrar_ajustes() {
-    // Registramos el ajuste
+    // 1. Registrar la opción para ESPAÑA
     register_setting(
-        'wpsp_grupo_opciones', // Nombre del grupo de opciones
-        'wpsp_texto_guardado', // Nombre de la opción
+        'wpsp_grupo_opciones',          // Grupo de opciones
+        'wpsp_texto_es',                // Nombre de la opción para ES
         array(
             'type' => 'string',
-            'sanitize_callback' => 'sanitize_text_field', // Función de WordPress para limpiar el valor
-            'default' => '',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => ''
+        )
+    );
+
+    // 2. Registrar la opción POR DEFECTO
+    register_setting(
+        'wpsp_grupo_opciones',          // Grupo de opciones
+        'wpsp_texto_default',           // Nombre de la opción para el resto
+        array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => ''
         )
     );
 
@@ -57,13 +68,22 @@ function wpsp_registrar_ajustes() {
         'wpsp-plugin-opciones'             // Página donde se mostrará la sección
     );
 
-    // Añadimos el campo de texto a la sección que acabamos de crear
+    // Añadimos el CAMPO 1 (para ES)
     add_settings_field(
-        'wpsp_campo_texto',                // ID del campo
-        'Texto Guardado',                  // Título del campo
-        'wpsp_campo_texto_callback',       // Función que muestra el campo
-        'wpsp-plugin-opciones',            // Página donde se mostrará el campo
-        'wpsp_seccion_principal'           // Sección donde se mostrará el campo
+        'wpsp_campo_texto_es',
+        'Texto para España (ES)',
+        'wpsp_campo_texto_es_callback', // Nuevo callback
+        'wpsp-plugin-opciones',
+        'wpsp_seccion_principal'
+    );
+
+    // Añadimos el CAMPO 2 (por Defecto)
+    add_settings_field(
+        'wpsp_campo_texto_default',
+        'Texto por Defecto (Resto del mundo)',
+        'wpsp_campo_texto_default_callback', // Nuevo callback
+        'wpsp-plugin-opciones',
+        'wpsp_seccion_principal'
     );
 }
 
@@ -74,20 +94,33 @@ function wpsp_registrar_ajustes() {
  */
 
 // Callback para la descripción de la sección
-function wpsp_seccion_principal_callback() {
-    echo '<p>Introduce el texto que quiers mostrar en la parte pública</p>';
+function wpsp_seccion_principal_callback()
+{
+    echo '<p>Introduce el texto que se mostrará según la ubicación del visitante.</p>';
 }
 
-// Callback para mostrar el campo de texto
-function wpsp_campo_texto_callback() {
-    // Obtenemos el valor
-    $valor = get_option( 'wpsp_texto_guardado', '' );
-    // Mostramos el valor en el campo de texto
-    echo '<input type="text" id="wpsp_texto_guardado" name="wpsp_texto_guardado" value="' . esc_attr( $valor ) . '" />';
+// NUEVO: Callback para el campo de ESPAÑA
+function wpsp_campo_texto_es_callback()
+{
+    $valor_guardado = get_option('wpsp_texto_es');
+    printf(
+        '<input type="text" id="wpsp_texto_es" name="wpsp_texto_es" value="%s" class="regular-text" />',
+        esc_attr($valor_guardado)
+    );
+}
+
+// NUEVO: Callback para el campo por DEFECTO
+function wpsp_campo_texto_default_callback()
+{
+    $valor_guardado = get_option('wpsp_texto_default');
+    printf(
+        '<input type="text" id="wpsp_texto_default" name="wpsp_texto_default" value="%s" class="regular-text" />',
+        esc_attr($valor_guardado)
+    );
 }
 
 /**
- * Función que muestra todo el HTML en la página de opciones.
+ * 4. Función que muestra todo el HTML en la página de opciones.
  * Es la función que registramos en 'add_options_page' en el paso 1.
  */
 function wpsp_pagina_opciones_html() {
@@ -121,7 +154,7 @@ function wpsp_pagina_opciones_html() {
 }
 
 /**
- * 4. Registramos el shortcode
+ * 5. Registramos el shortcode
  * 
  * Usamos elhook 'init' para registrar el shortcode.
  */
@@ -133,9 +166,54 @@ function wpsp_registrar_shortcode() {
 }
 
 function wpsp_shortcode_callback() {
-    // Obtenemos el valor guardado en la opción
-    $texto = get_option( 'wpsp_texto_guardado', '' );
+    // Obtenemos la IP del visitante. 
+    if (!empty($_SERVER['HTTP_CLIENT_IP'])) {
+        $ip = $_SERVER['HTTP_CLIENT_IP'];
+    } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        $ip = $_SERVER['HTTP_X_FORWARDED_FOR'];
+    } else {
+        $ip = $_SERVER['REMOTE_ADDR'];
+    }
+    
+    // Limpiamos la IP por si vienen varias: 
+    $ip = explode(',', $ip)[0];
+    $ip = trim($ip);
 
-    // Devolvemos el texto para que se muestre donde se use el shortcode
-    return esc_html( $texto );
+    if ($ip == '127.0.0.1' || $ip == '::1'){
+        $ip = '81.38.86.11';
+    }
+
+    // Comprobamos la cache
+    $transient_key = 'wpsp_geo_' . md5( $ip );; // Clave única para la IP
+    $country_code = get_transient( $transient_key ); // Intentamos obtener el código de país de la cache
+
+    if (false === $country_code){
+        $ulr = 'http://ip-api.com/json/' . $ip;
+        $response = wp_remote_get( $ulr );
+        $country_code = 'DEFAULT'; // Valor por defecto
+
+        if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200){
+            $body = wp_remote_retrieve_body( $response );
+            $data = json_decode( $body );
+            if ($data && data->status === 'success' && !empty($data->countryCode)){
+                $country_code = $data->countryCode;
+            }
+        }
+
+        // Guardamos en la cache por 6 horas
+        set_transient( $transient_key, $country_code, 6 * HOUR_IN_SECONDS );
+    }
+
+    // Decidimos ahora que texto mosatramos
+    $texto_a_mostrar = '';
+    if ( $country_code === 'ES' ) {
+        $texto_a_mostrar = get_option( 'wpsp_texto_es', 'Texto por defecto para España' );
+    } else {
+        $texto_a_mostrar = get_option( 'wpsp_texto_default', 'Texto por defecto para el resto del mundo' );
+    }
+    if (empty($texto_a_mostrar)) {
+        $texto_a_mostrar = get_option('wpsp_texto_default');
+    }
+
+    return esc_html( $texto_a_mostrar );
 }
