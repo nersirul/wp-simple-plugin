@@ -17,6 +17,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  * 
  * Usamos el 'hook' 'admin_menu' para añadir un nuevo menú en el panel de administración de WordPress.
  */
+add_action('admin_menu', 'wpsp_crear_menu_admin');
+
+// Función que crea el menú de administración
 function wpsp_crear_menu_admin() {
     add_options_page(
         'Ajustes de Mi Plugin',      // Título de la página
