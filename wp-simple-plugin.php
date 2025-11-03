@@ -119,3 +119,23 @@ function wpsp_pagina_opciones_html() {
     </div>
     <?php
 }
+
+/**
+ * 4. Registramos el shortcode
+ * 
+ * Usamos elhook 'init' para registrar el shortcode.
+ */
+add_action( 'init', 'wpsp_registrar_shortcode' );
+
+function wpsp_registrar_shortcode() {
+    // Registramos el shortcode [mi_texto_sencillo] y le decimos qué función usar
+    add_shortcode('mi_texto_sencillo', 'wpsp_shortcode_callback' );
+}
+
+function wpsp_shortcode_callback() {
+    // Obtenemos el valor guardado en la opción
+    $texto = get_option( 'wpsp_texto_guardado', '' );
+
+    // Devolvemos el texto para que se muestre donde se use el shortcode
+    return esc_html( $texto );
+}
